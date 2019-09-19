@@ -11,24 +11,7 @@
 #define PROGRAM_FILE "fz_function.cl"
 #define KERNEL_NAME_FUNC "fz_function"
 #include "OPENCL_HEADERS.h"
-// **** STRUCTURES TO STORE ALL THE OPENCL DATA STRUCTURES ******
-struct OPENCL_STRUCTURES
-{
-    cl_platform_id *platform;
-    cl_device_id *device;
-    cl_context context;
-    cl_command_queue cQ;
-    cl_program program;
-    cl_kernel kernel;
-};
-//****************************************************
-// STRUCTURES TO STORE THE OPENCL MEMORY OBJECTS ******
-struct OPENCL_BUFFERS
-{
-    // MEMORY OBJECTS *********
-
-    cl_mem read_buff,buff_step,buff_points;
-};
+#include "ocl_data_structures.h"
 //******************************************************
 //*** EXTERNAL FUNCTIONS *******************************
 extern void CheckError(cl_int err, char *str);
@@ -36,9 +19,10 @@ extern void DisplayDeviceInfo(cl_device_id id,cl_device_info param_name);
 extern void DisplayPlatformInfo(cl_platform_id id, cl_platform_info param_name,char *request);
 extern void GetOpenCLInfo(void);
 extern void user_input(int *Nx,int *Ny, int *Nz,float *x0, float  *xN,float *y0,float *yN,float *z0,float *zN,float *hx, float *hy,float *hz,int *Ntot);
-
+extern void AlGenUsrInput(int *N_ind,int *N_color,int *M,int *N, int *N_reg, char filename[256]);
+extern void disp_ad_matrix(struct Node **admat,int n_reg);
+extern void get_ad_matrix(struct Node **admat,int n_reg,char filename[256]);
 // ********************************
-
 void GetComputeUnits(cl_device_id did)
 {
     cl_int err;
@@ -109,7 +93,7 @@ cl_program BuildProgram(cl_context cntx, cl_device_id dev, const char *filename)
 int main ()
 {
      //USER DATA TYPE OPENCL_STRUCTURES
-     struct OPENCL_STRUCTURES opencl;
+    struct OPENCL_STRUCTURES opencl;
     cl_uint pIdx,dIdx;
     
     
@@ -119,7 +103,6 @@ int main ()
     
     //CALL TO THE FUNCTION THAT ASKS FOR THE USER DATA
     //user_input(&Nx,&Ny,&Nz,&x0,&xN,&y0,&yN,&z0,&zN,&hx,&hy,&hz,&Ntot);
-    //******************************************************************
     
     float step[] = {hx,hy,hz};
     float point0[] ={x0,y0,z0};
@@ -152,7 +135,7 @@ int main ()
     CheckError(err,"GETTING YOUR SELECTED DEVICES\n");
     DisplayPlatformInfo(opencl.platform[pIdx],CL_PLATFORM_VENDOR,"CL_PLATFORM_VENDOR");
     DisplayDeviceInfo(opencl.device[dIdx],CL_DEVICE_TYPE);
-    DisplayDeviceInfo(opencl.device[dIdx],CL_DEVICE_VENDOR);
+    DisplayDeviceInfo(opencl.device[dIdx],CL_DEVICE_VENDOR); 
     DisplayDeviceInfo(opencl.device[dIdx],CL_DEVICE_NAME);
     //THIS FUNCTION SHOWS THE COMPUTE UNITS FOR THE SELECTED DEVICE *************
     GetComputeUnits(opencl.device[dIdx]);
@@ -161,7 +144,18 @@ int main ()
     opencl.context = clCreateContext(NULL,1,&opencl.device[dIdx],NULL,NULL,&err);
     CheckError(err,"CREATING THE CONTEXT");
     //********************************************************************
+    //
     
+    printf("************  STARTING THE GENETIC ALGORITHM  ************\n");
+    int N_ind,N_color,M,N,best,N_reg;
+    char filename[256];
+    AlGenUsrInput(&N_ind,&N_color,&M,&N,&N_reg,filename);
+    printf("No of REG = %d\n",N_reg);
+    struct Node *admat[N_reg];
+    get_ad_matrix(admat,N_reg,filename);
+    disp_ad_matrix(admat,N_reg);
+
+      
     // PROGRAM AND KERNEL CREATION ***************************************
     opencl.program = BuildProgram(opencl.context,opencl.device[dIdx],PROGRAM_FILE);
     

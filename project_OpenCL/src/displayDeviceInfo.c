@@ -129,8 +129,8 @@ void DisplayDeviceInfo(cl_device_id id, cl_device_info param_name)
             }
             switch (param_name)
             {
-                case CL_DEVICE_GLOBAL_MEM_SIZE: printf("\tDEVICE GLOBAL MEM: %llu MB\n",(*size)>>20);break;
-                case CL_DEVICE_MAX_MEM_ALLOC_SIZE: printf("\tDEVICE MAX MEMORY ALLOCATION %llu MB\n",(*size)>>20);break;
+                case CL_DEVICE_GLOBAL_MEM_SIZE: printf("\tDEVICE GLOBAL MEM: %lu MB\n",(*size)>>20);break;
+                case CL_DEVICE_MAX_MEM_ALLOC_SIZE: printf("\tDEVICE MAX MEMORY ALLOCATION %lu MB\n",(*size)>>20);break;
             }
             free(size);
         }break;
