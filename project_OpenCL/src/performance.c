@@ -8,8 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#define PROGRAM_FILE "fz_function.cl"
-#define KERNEL_NAME_FUNC "fz_function"
+#define PROGRAM_FILE "get_fitness.cl"
+#define KERNEL_NAME_FUNC "GetFitness"
 #include "OPENCL_HEADERS.h"
 #include "ocl_data_structures.h"
 //******************************************************
@@ -22,6 +22,10 @@ extern void user_input(int *Nx,int *Ny, int *Nz,float *x0, float  *xN,float *y0,
 extern void AlGenUsrInput(int *N_ind,int *N_color,int *M,int *N, int *N_reg, char filename[256]);
 extern void disp_ad_matrix(struct Node **admat,int n_reg);
 extern void get_ad_matrix(struct Node **admat,int n_reg,char filename[256]);
+extern void ComputeAdjMat(int *admat,int n_reg,char filename[256]);
+extern void FillZeroMat(int *mat,int M,int N);
+extern void print_matrix( char* desc, int m, int n, int *a);
+extern void RandPopulation(int *pop_mat,int N_ind,int N_reg,int color);
 // ********************************
 void GetComputeUnits(cl_device_id did)
 {
@@ -56,7 +60,7 @@ cl_program BuildProgram(cl_context cntx, cl_device_id dev, const char *filename)
     
     program_handle = fopen(filename,"r");
     if(program_handle==NULL)
-    {
+     {
         perror("FILE NOT FOUND");
         exit(1);
     }
@@ -152,8 +156,43 @@ int main ()
     AlGenUsrInput(&N_ind,&N_color,&M,&N,&N_reg,filename);
     printf("No of REG = %d\n",N_reg);
     struct Node *admat[N_reg];
+    int gsize = N_reg*N_reg;
+    int adjmatrix[gsize];
+    FillZeroMat(adjmatrix,N_reg,N_reg);
     get_ad_matrix(admat,N_reg,filename);
     disp_ad_matrix(admat,N_reg);
+    ComputeAdjMat(adjmatrix,N_reg,filename);
+    print_matrix("ADJ MATRIX",N_reg,N_reg,adjmatrix);
+
+    int pop_mat[N_ind*N_reg];
+    int fitness[N_ind];
+    int fitnesscpu[N_ind];
+    RandPopulation(pop_mat,N_ind,N_reg,N_color);
+    print_matrix("RAND POP",N_ind,N_reg,pop_mat);
+
+
+	   int i=0;
+	   do
+	   {
+             int sum=0;
+             for(int k=0; k<N_reg; k++)
+             {
+                   for(int j=0; j<N_reg; j++)
+                   {
+                           if(adjmatrix[k*N_reg + j]==1)
+                           {
+                                   if(pop_mat[i*N_reg + k]==pop_mat[i*N_reg + j])
+                                   {
+                                           sum = sum + 1;
+
+                                   }
+                           }
+                   }
+            }
+	    fitnesscpu[i] = sum;
+	    i++;
+	   }while(i<N_ind);
+
 
       
     // PROGRAM AND KERNEL CREATION ***************************************
@@ -162,14 +201,56 @@ int main ()
     opencl.kernel = clCreateKernel(opencl.program,KERNEL_NAME_FUNC,&err);
     CheckError(err,"KERNEL CREATION");
     //WORK-ITEMS DATA *************************
-    /*size_t dim = 2;
+    //
+    //
+    int Gx=16,Gy=16;
+    int Lx=4,Ly=4;
+    size_t dim = 2;
     size_t global_offset[] = {0,0};
     size_t global_size[] = {Gx,Gy};
-    size_t local_size[]  = {Lx,Ly};*/
-    
+    size_t local_size[]  = {Lx,Ly};
 
-    
-    
+    printf("NUMBER OF WORK-ITEMS: %d\n",Gx*Gy);
+    printf("NUMBER OF WORK-GROUPS: %d\n",(Gx*Gy)/(Lx*Ly));
+    printf("WORK-GROUPS SIZE: (%dx%d)\n",Lx,Ly);
+
+
+    //MEMORY OBJECTS
+
+    cl_mem ocl_admat,ocl_fitness,ocl_popmat;
+
+    //CREATE A WRITE ONLY BUFFER TO HOLD THE OUTPUT DATA
+    ocl_admat = clCreateBuffer(opencl.context,CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR,sizeof(adjmatrix),adjmatrix,&err);
+    ocl_popmat = clCreateBuffer(opencl.context,CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR,sizeof(pop_mat),pop_mat,&err);
+    ocl_fitness = clCreateBuffer(opencl.context,CL_MEM_WRITE_ONLY,sizeof(fitness),NULL,&err);
+
+    //SET KERNEL ARGS
+    err = clSetKernelArg(opencl.kernel,0,sizeof(cl_mem),&ocl_fitness);
+    err |= clSetKernelArg(opencl.kernel,1,sizeof(cl_mem),&ocl_popmat);
+    err |= clSetKernelArg(opencl.kernel,2,sizeof(cl_mem),&ocl_admat);
+    err |= clSetKernelArg(opencl.kernel,3,sizeof(N_reg),&N_reg);
+    err |= clSetKernelArg(opencl.kernel,4,sizeof(N_reg),&N_ind);
+
+    CheckError(err, "KERNEL SETTING ARGUMENT");
+
+    // CREATING THE COMMAND QUEUE TO SEND INSTRUCTIONS TO THE DEVICE
+    opencl.cQ = clCreateCommandQueue(opencl.context,opencl.device[dIdx],0,&err);
+    CheckError(err, "COMMAND QUEUE CREATION");
+
+    // ENQUEUE THE KERNEL
+    err = clEnqueueNDRangeKernel(opencl.cQ,opencl.kernel,dim,global_offset,global_size,local_size,0,NULL,NULL);
+    CheckError(err,"THE KERNEL ENQUEUEING");
+
+     // READ AND PRINT THE RESULT
+    err = clEnqueueReadBuffer(opencl.cQ,ocl_fitness,CL_TRUE,0,sizeof(fitness),&fitness,0,NULL,NULL);
+    CheckError(err, "BUFFER READING");
+
+
+   printf("************  STARTING THE GENETIC ALGORITHM  ************\n");
+   for(int i=0; i<N_ind; i++)
+   {
+	   printf("Ind[ %d ]   fitnessGPU = %d    fitnessCPU = %d\n",i,fitness[i],fitnesscpu[i]);
+   }
     
     
     free(opencl.device);
