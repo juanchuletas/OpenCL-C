@@ -10,12 +10,6 @@ struct OPENCL_STRUCTURES
 };
 // ****************************************************
 // STRUCTURES TO STORE THE OPENCL MEMORY OBJECTS ******
-struct OPENCL_BUFFERS
-{
-    // MEMORY OBJECTS *********
-
-    cl_mem read_buff,buff_step,buff_points;
-};
 struct Node //STRUCTS DECLARATION
 {
         int num;
