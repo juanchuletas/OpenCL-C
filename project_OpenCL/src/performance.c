@@ -108,9 +108,6 @@ int main ()
     //CALL TO THE FUNCTION THAT ASKS FOR THE USER DATA
     //user_input(&Nx,&Ny,&Nz,&x0,&xN,&y0,&yN,&z0,&zN,&hx,&hy,&hz,&Ntot);
     
-    float step[] = {hx,hy,hz};
-    float point0[] ={x0,y0,z0};
-    
     
     //THE FIRST STEP IN OPENCL IS QUERY FOR THE AVAILABLE HARDWARE
     
@@ -195,11 +192,16 @@ int main ()
 
 
       
-    // PROGRAM AND KERNEL CREATION ***************************************
-    opencl.program = BuildProgram(opencl.context,opencl.device[dIdx],PROGRAM_FILE);
+    // PROGRAM AND KERNEL CREATION **************************************
+    char files[N_kernels][1080] = {"get_fitness.cl","get_best_fitness.cl"}
+    char kernelName[N_kernels][1080] = {"GetFitness","GetFitness"}
+    opencl.program1 = BuildProgram(opencl.context,opencl.device[dIdx],files[0]);
+    opencl.program2 = BuildProgram(opencl.context,opencl.device[dIdx],files[1]);
     
-    opencl.kernel = clCreateKernel(opencl.program,KERNEL_NAME_FUNC,&err);
-    CheckError(err,"KERNEL CREATION");
+    opencl.kernel1 = clCreateKernel(opencl.program1,KERNEL_NAME_FUNC,&err);
+    CheckError(err,"KERNEL CREATION 1");
+    opencl.kernel2 = clCreateKernel(opencl.program2,KERNEL_NAME_FUNC,&err);
+    CheckError(err,"KERNEL CREATION 2");
     //WORK-ITEMS DATA *************************
     //
     //
@@ -225,13 +227,13 @@ int main ()
     ocl_fitness = clCreateBuffer(opencl.context,CL_MEM_WRITE_ONLY,sizeof(fitness),NULL,&err);
 
     //SET KERNEL ARGS
-    err = clSetKernelArg(opencl.kernel,0,sizeof(cl_mem),&ocl_fitness);
-    err |= clSetKernelArg(opencl.kernel,1,sizeof(cl_mem),&ocl_popmat);
-    err |= clSetKernelArg(opencl.kernel,2,sizeof(cl_mem),&ocl_admat);
-    err |= clSetKernelArg(opencl.kernel,3,sizeof(N_reg),&N_reg);
-    err |= clSetKernelArg(opencl.kernel,4,sizeof(N_reg),&N_ind);
+    err = clSetKernelArg(opencl.kernel1,0,sizeof(cl_mem),&ocl_fitness);
+    err |= clSetKernelArg(opencl.kernel1,1,sizeof(cl_mem),&ocl_popmat);
+    err |= clSetKernelArg(opencl.kernel1,2,sizeof(cl_mem),&ocl_admat);
+    err |= clSetKernelArg(opencl.kernel1,3,sizeof(N_reg),&N_reg);
+    err |= clSetKernelArg(opencl.kernel1,4,sizeof(N_reg),&N_ind);
 
-    CheckError(err, "KERNEL SETTING ARGUMENT");
+    CheckError(err, "KERNEL 1 SETTING ARGUMENT");
 
     // CREATING THE COMMAND QUEUE TO SEND INSTRUCTIONS TO THE DEVICE
     opencl.cQ = clCreateCommandQueue(opencl.context,opencl.device[dIdx],0,&err);
