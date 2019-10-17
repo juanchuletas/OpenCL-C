@@ -5,8 +5,8 @@ struct OPENCL_STRUCTURES
     cl_device_id *device;
     cl_context context;
     cl_command_queue cQ;
-    cl_program program;
-    cl_kernel kernel;
+    cl_program *program;
+    cl_kernel *kernel;
 };
 // ****************************************************
 // STRUCTURES TO STORE THE OPENCL MEMORY OBJECTS ******
