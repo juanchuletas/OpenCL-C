@@ -8,10 +8,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
 #define PROGRAM_FILE "get_fitness.cl"
 #define KERNEL_NAME_FUNC "GetFitness"
 #include "OPENCL_HEADERS.h"
 #include "ocl_data_structures.h"
+#define N_kernels 2
 //******************************************************
 //*** EXTERNAL FUNCTIONS *******************************
 extern void CheckError(cl_int err, char *str);
@@ -49,6 +51,10 @@ void GetComputeUnits(cl_device_id did)
     printf("\n");
     
 
+}
+void CL_CALLBACK KernelComplete(cl_event ev,cl_int status,void *message)
+{
+	printf("%s",(char *)message);
 }
 cl_program BuildProgram(cl_context cntx, cl_device_id dev, const char *filename)
 {
@@ -96,6 +102,7 @@ cl_program BuildProgram(cl_context cntx, cl_device_id dev, const char *filename)
 }
 int main ()
 {
+     srand(time(NULL));
      //USER DATA TYPE OPENCL_STRUCTURES
     struct OPENCL_STRUCTURES opencl;
     cl_uint pIdx,dIdx;
@@ -163,7 +170,10 @@ int main ()
 
     int pop_mat[N_ind*N_reg];
     int fitness[N_ind];
+    int solution[N_ind];
+    int data[2];
     int fitnesscpu[N_ind];
+    int bestInd = -1;
     RandPopulation(pop_mat,N_ind,N_reg,N_color);
     print_matrix("RAND POP",N_ind,N_reg,pop_mat);
 
@@ -193,20 +203,26 @@ int main ()
 
       
     // PROGRAM AND KERNEL CREATION **************************************
-    char files[N_kernels][1080] = {"get_fitness.cl","get_best_fitness.cl"}
-    char kernelName[N_kernels][1080] = {"GetFitness","GetFitness"}
-    opencl.program1 = BuildProgram(opencl.context,opencl.device[dIdx],files[0]);
-    opencl.program2 = BuildProgram(opencl.context,opencl.device[dIdx],files[1]);
+    char files[N_kernels][1080] = {"get_fitness.cl","get_best_fitness.cl"};
+    char kernelName[N_kernels][1080] = {"GetFitness","GetBestFitness"};
+
+    opencl.program = (cl_program *)malloc(sizeof(cl_program)*2);
+    opencl.program[0] = BuildProgram(opencl.context,opencl.device[dIdx],files[0]);
+    opencl.program[1] = BuildProgram(opencl.context,opencl.device[dIdx],files[1]);
     
-    opencl.kernel1 = clCreateKernel(opencl.program1,KERNEL_NAME_FUNC,&err);
+    opencl.kernel = (cl_kernel *)malloc(sizeof(cl_kernel)*2);
+    opencl.kernel[0] = clCreateKernel(opencl.program[0],kernelName[0],&err);
     CheckError(err,"KERNEL CREATION 1");
-    opencl.kernel2 = clCreateKernel(opencl.program2,KERNEL_NAME_FUNC,&err);
+    opencl.kernel[1] = clCreateKernel(opencl.program[1],kernelName[1],&err);
     CheckError(err,"KERNEL CREATION 2");
     //WORK-ITEMS DATA *************************
     //
     //
     int Gx=16,Gy=16;
     int Lx=4,Ly=4;
+    int NWorkG = (Gx*Gy)/(Lx*Ly);
+    int bestGlob[NWorkG];
+    int bestLoc[NWorkG];
     size_t dim = 2;
     size_t global_offset[] = {0,0};
     size_t global_size[] = {Gx,Gy};
@@ -216,22 +232,26 @@ int main ()
     printf("NUMBER OF WORK-GROUPS: %d\n",(Gx*Gy)/(Lx*Ly));
     printf("WORK-GROUPS SIZE: (%dx%d)\n",Lx,Ly);
 
-
     //MEMORY OBJECTS
 
-    cl_mem ocl_admat,ocl_fitness,ocl_popmat;
+    cl_mem ocl_admat,ocl_fitness,ocl_popmat,ocl_solution,ocl_data, ocl_bestGlob,ocl_bestLoc;
+    cl_event kernel_event;
 
     //CREATE A WRITE ONLY BUFFER TO HOLD THE OUTPUT DATA
     ocl_admat = clCreateBuffer(opencl.context,CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR,sizeof(adjmatrix),adjmatrix,&err);
     ocl_popmat = clCreateBuffer(opencl.context,CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR,sizeof(pop_mat),pop_mat,&err);
     ocl_fitness = clCreateBuffer(opencl.context,CL_MEM_WRITE_ONLY,sizeof(fitness),NULL,&err);
+    ocl_solution = clCreateBuffer(opencl.context,CL_MEM_WRITE_ONLY,sizeof(solution),NULL,&err);
+    ocl_data = clCreateBuffer(opencl.context,CL_MEM_WRITE_ONLY,sizeof(data),NULL,&err);
+    ocl_bestGlob = clCreateBuffer(opencl.context,CL_MEM_WRITE_ONLY,sizeof(bestGlob),NULL,&err);
+    //ocl_bestLoc = clCreateBuffer(opencl.context,CL_MEM_WRITE_ONLY,sizeof(int)*NWorkG,NULL,&err);
 
     //SET KERNEL ARGS
-    err = clSetKernelArg(opencl.kernel1,0,sizeof(cl_mem),&ocl_fitness);
-    err |= clSetKernelArg(opencl.kernel1,1,sizeof(cl_mem),&ocl_popmat);
-    err |= clSetKernelArg(opencl.kernel1,2,sizeof(cl_mem),&ocl_admat);
-    err |= clSetKernelArg(opencl.kernel1,3,sizeof(N_reg),&N_reg);
-    err |= clSetKernelArg(opencl.kernel1,4,sizeof(N_reg),&N_ind);
+    err = clSetKernelArg(opencl.kernel[0],0,sizeof(cl_mem),&ocl_fitness);
+    err |= clSetKernelArg(opencl.kernel[0],1,sizeof(cl_mem),&ocl_popmat);
+    err |= clSetKernelArg(opencl.kernel[0],2,sizeof(cl_mem),&ocl_admat);
+    err |= clSetKernelArg(opencl.kernel[0],3,sizeof(N_reg),&N_reg);
+    err |= clSetKernelArg(opencl.kernel[0],4,sizeof(N_ind),&N_ind);
 
     CheckError(err, "KERNEL 1 SETTING ARGUMENT");
 
@@ -240,26 +260,55 @@ int main ()
     CheckError(err, "COMMAND QUEUE CREATION");
 
     // ENQUEUE THE KERNEL
-    err = clEnqueueNDRangeKernel(opencl.cQ,opencl.kernel,dim,global_offset,global_size,local_size,0,NULL,NULL);
+    err = clEnqueueNDRangeKernel(opencl.cQ,opencl.kernel[0],dim,global_offset,global_size,local_size,0,NULL,NULL);
+    CheckError(err,"THE KERNEL ENQUEUEING");
+
+
+
+    /*char *kernel_msg;
+
+    kernel_msg = "KERNEL FINISHED SUCCESSFULLY\n\0";
+    err = clSetEventCallback(kernel_event,CL_COMPLETE,&KernelComplete,kernel_msg);
+    CheckError(err,"SETTING CALLBACK FOR EVENT");*/
+    
+    err = clSetKernelArg(opencl.kernel[1],0,sizeof(cl_mem),&ocl_fitness);
+    err |= clSetKernelArg(opencl.kernel[1],1,sizeof(cl_mem),&ocl_popmat);
+    err |= clSetKernelArg(opencl.kernel[1],2,sizeof(cl_mem),&ocl_bestGlob);
+    err |= clSetKernelArg(opencl.kernel[1],3,sizeof(cl_mem),&ocl_data);
+    err |= clSetKernelArg(opencl.kernel[1],4,sizeof(int)*NWorkG,NULL);
+    err |= clSetKernelArg(opencl.kernel[1],5,sizeof(int)*NWorkG,NULL);
+    err |= clSetKernelArg(opencl.kernel[1],6,sizeof(int),&N_ind);
+    CheckError(err,"THE KERNEL 2  ENQUEUEING");
+    err = clEnqueueNDRangeKernel(opencl.cQ,opencl.kernel[1],dim,global_offset,global_size,local_size,0,NULL,NULL);
     CheckError(err,"THE KERNEL ENQUEUEING");
 
      // READ AND PRINT THE RESULT
     err = clEnqueueReadBuffer(opencl.cQ,ocl_fitness,CL_TRUE,0,sizeof(fitness),&fitness,0,NULL,NULL);
     CheckError(err, "BUFFER READING");
 
+    err = clEnqueueReadBuffer(opencl.cQ,ocl_data,CL_TRUE,0,sizeof(data),&data,0,NULL,NULL);
+    CheckError(err, "BUFFER READING");
+
+    err = clEnqueueReadBuffer(opencl.cQ,ocl_bestGlob,CL_TRUE,0,sizeof(bestGlob),&bestGlob,0,NULL,NULL);
+    CheckError(err, "BUFFER READING");
 
    printf("************  STARTING THE GENETIC ALGORITHM  ************\n");
    for(int i=0; i<N_ind; i++)
    {
 	   printf("Ind[ %d ]   fitnessGPU = %d    fitnessCPU = %d\n",i,fitness[i],fitnesscpu[i]);
    }
-    
-    
+   
+   for(int i=0; i<NWorkG; i++)
+   {
+	   printf(" bestGlob[%d] = %d\n",i,bestGlob[i]);
+   }
+
+    printf("THE BEST FITNESS IS %d BELONGING TO THE INDIVIDUAL %d\n",data[0],data[1]); 
     free(opencl.device);
     free(opencl.platform);
     clReleaseContext(opencl.context);
-    clReleaseProgram(opencl.program);
-    clReleaseKernel(opencl.kernel);
+    clReleaseProgram(opencl.program[0]);
+    clReleaseKernel(opencl.kernel[0]);
     
     
     return 0;
