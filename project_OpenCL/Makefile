@@ -33,6 +33,24 @@ $(BIN)/%.o : $(SRC)/%.c
 	@echo  "\033[0;32m [OK] \033[0m       \033[0;33m Compiling:\033[0m" $<
 	$(CC) $(CFLAGS) -c $< -o $@
 endif
+ifeq ($(UNAME), Linux)
+##SYSNAME:=$(shell sw_vers -productName)
+##SYSV:=$(shell sw_vers -productVersion)
+CFLAGS = -I$(INC)
+LIBS = -l OpenCL
+
+$(BIN)/$(TARGET) : $(OBJECT)
+	@echo "$(RED)LINKING...$(NC)"
+	$(CC) -o $@ $^ $(LIBS)
+	@echo "$(YELLOW)FINISHED!!!$(NC)"
+	@echo "$(YELLOW)SUCCESFULL!!!$(NC)"
+	@echo "$(BLUE)OPERATING SISTEM: $(SYSNAME)!!!...$(NC)"
+
+$(BIN)/%.o : $(SRC)/%.c
+	@echo "$(GREEN)COMPILING...$(NC)"
+	@echo  "\033[0;32m [OK] \033[0m       \033[0;33m Compiling:\033[0m" $<
+	$(CC) $(CFLAGS) -c $< -o $@
+endif
 
 clean :
 	rm -f $(OBJECT) $(BIN)/$(TARGET)
