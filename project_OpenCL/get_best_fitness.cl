@@ -11,25 +11,35 @@ __kernel void GetBestFitness(__global int *fitness,__global int *pop,__global in
 		 fit_loc[work_item_indx] = fitness[gi];
 		 target[work_group_indx] = fit_loc[0];
                  __local int winner;
+                 __local int shoot;
+                 __local int thread;
                  winner = -1;
-                 if(fit_loc[work_item_indx]<=target[work_group_indx])
+                 /*if(fit_loc[work_item_indx]<=target[work_group_indx])
                  {
                  	 //target[work_group_indx] = fit_loc[work_item_indx];
-                         winner  = fit_loc[work_item_indx];
+                         shoot  = fit_loc[work_item_indx];
+                 }*/
+                 barrier(CLK_LOCAL_MEM_FENCE);
+                 if(winner<0)
+                 {
+                         winner = fit_loc[work_item_indx];
+                         thread = work_item_indx;
+                 }
+                 else
+                 {
+                         if(fit_loc[work_item_indx]<winner)
+                         {
+                               winner = fit_loc[work_item_indx];
+                               thread = work_item_indx;
+                         }      
                  }
                  barrier(CLK_LOCAL_MEM_FENCE);
-                 if(winner>0)
+                 best_global[work_group_indx] = winner;
+                 /*if(work_item_indx==0)
                  {
-                         if(winner<target[work_group_indx])
-                         { 
-                               target[work_group_indx] = winner
-                         }
-                 }
-		 target[work_group_indx] = fit_loc[work_item_indx];
-                 if(work_group_indx==1)
-                 best_global[work_item_indx] = fit_loc[work_item_indx];
-                 data[0] = fitness[0];
-                 data[1] = 0;
+                     data[0] = winner;
+                     data[1] = thread;
+                 }*/
 	 }
 
 }
