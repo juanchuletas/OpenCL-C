@@ -9,37 +9,52 @@ __kernel void GetBestFitness(__global int *fitness,__global int *pop,__global in
 	 {
            
 		 fit_loc[work_item_indx] = fitness[gi];
-		 target[work_group_indx] = fit_loc[0];
-                 __local int winner;
-                 __local int shoot;
-                 __local int thread;
-                 winner = -1;
-                 /*if(fit_loc[work_item_indx]<=target[work_group_indx])
-                 {
-                 	 //target[work_group_indx] = fit_loc[work_item_indx];
-                         shoot  = fit_loc[work_item_indx];
-                 }*/
+                 __local int local_winner;
+		 __local int best_loc_ind;
+
+		 
+                 local_winner = fitness[0];
+
                  barrier(CLK_LOCAL_MEM_FENCE);
-                 if(winner<0)
+		 if(work_item_indx==0)
+		 {
+			for(int i=0; i<16; i++)
+			{
+				if(fit_loc[i]<local_winner)
+				{	
+				       local_winner = fit_loc[i];
+				       best_loc_ind = work_group_indx*16 + i;
+				}
+			}
+			
+		 }
+                 barrier(CLK_GLOBAL_MEM_FENCE);
+                 if(work_item_indx == 0)
                  {
-                         winner = fit_loc[work_item_indx];
-                         thread = work_item_indx;
+			best_global[work_group_indx] = local_winner;
+			target[work_group_indx] = best_loc_ind;
                  }
-                 else
-                 {
-                         if(fit_loc[work_item_indx]<winner)
-                         {
-                               winner = fit_loc[work_item_indx];
-                               thread = work_item_indx;
-                         }      
-                 }
-                 barrier(CLK_LOCAL_MEM_FENCE);
-                 best_global[work_group_indx] = winner;
-                 /*if(work_item_indx==0)
-                 {
-                     data[0] = winner;
-                     data[1] = thread;
-                 }*/
+                 barrier(CLK_GLOBAL_MEM_FENCE);
+		 int global_winner,best_glob_ind;
+		 if(gi==0)
+		 {
+		 	global_winner = best_global[0];
+			best_glob_ind = target[0];
+		 	for(int i=0; i<16; i++)
+			{
+				if(best_global[i]<global_winner)
+				{
+					global_winner = best_global[i];
+					best_glob_ind = target[i];
+				}	
+			}
+			data[0] = global_winner;
+			data[1] = best_glob_ind;
+		 }
+
+
+		 
+
 	 }
 
 }
